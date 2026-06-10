@@ -90,19 +90,37 @@ const CHORD_TEMPLATES = {
     let smoothedChroma = new Array(12).fill(0);
     const SMOOTHING_FACTOR = 0.7;
 
-    startBtn.addEventListener('click', async () => {
+       startBtn.addEventListener('click', async () => {
         // Security check: Guard against insecure browser context rules
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
             chordDisplay.innerText = "[ERROR: INSECURE CONTEXT. Use localhost or HTTPS]";
-            alert("Web Audio capture requires an HTTPS production server or Localhost context to run.");
+            alert("Web Audio system capture requires an HTTPS production server or Localhost context to run.");
             return;
         }
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            // FIX: Switch from getUserMedia (microphone) to getDisplayMedia (screen/system sound)
+            const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: true, // Browsers require video to be true for display capture selection
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                } 
+            });
             
+            // Verify if the user actually checked the "Share system audio" checkbox
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                chordDisplay.innerText = "[ERROR: SYSTEM AUDIO CHECKBOX NOT UNCHECKED]";
+                alert("You must check the 'Share audio' box in the sharing prompt to capture speaker sound!");
+                // Stop any accidental silent screen share tracks
+                stream.getTracks().forEach(track => track.stop());
+                return;
+            }
+
             startBtn.style.display = 'none';
-            chordDisplay.innerText = "LISTENING...";
+            chordDisplay.innerText = "SYSTEM SOUND ACTIVE...";
 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioCtx.createMediaStreamSource(stream);
@@ -115,7 +133,7 @@ const CHORD_TEMPLATES = {
             source.connect(analyser);
             drawLoop();
         } catch (err) {
-            chordDisplay.innerText = "[ERROR: MIC ACCESS DENIED]";
+            chordDisplay.innerText = "[ERROR: SYSTEM AUDIO ACCESS DENIED]";
             console.error(err);
         }
     });

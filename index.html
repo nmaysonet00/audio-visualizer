@@ -69,16 +69,22 @@
     const OFFSET_RIGHT = 15;
     const PLOT_WIDTH = waveCanvas.width - OFFSET_LEFT - OFFSET_RIGHT;
 
-    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-    const CHORD_TEMPLATES = {
-        "Major": [0, 4, 7], 
-        "Minor": [0, 3, 7], 
-        "Diminished": [0, 3, 6], 
-        "Augmented": [0, 4, 8], 
-        "Major 7th": [0, 4, 7, 11], 
-        "Minor 7th": [0, 3, 7, 10], 
-        "Dominant 7th": [0, 4, 7, 10]
-    };
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+
+const CHORD_TEMPLATES = {
+    "Major": Array(0, 4, 7), 
+    "Minor": Array(0, 3, 7), 
+    "Diminished": Array(0, 3, 6), 
+    "Augmented": Array(0, 4, 8), 
+    "Major 7th": Array(0, 4, 7, 11), 
+    "Minor 7th": Array(0, 3, 7, 10), 
+    "Dominant 7th": Array(0, 4, 7, 10)
+};
+
+
+
+
 
     let audioCtx, analyser, dataArray, bufferLength;
     let smoothedChroma = new Array(12).fill(0);
@@ -159,14 +165,14 @@
         fftCtx.strokeStyle = "#e0e0e0";
         fftCtx.fillStyle = "#000000";
         
-        const freqMarks = [0, 250, 500, 750, 1000, 1250, 1500];
+        const freqMarks = Array(0, 250, 500, 750, 1000, 1250, 1500);
         freqMarks.forEach(freq => {
             let xPos = OFFSET_LEFT + ((freq / 1500) * PLOT_WIDTH);
             fftCtx.beginPath(); fftCtx.moveTo(xPos, 5); fftCtx.lineTo(xPos, fftCanvas.height - 20); fftCtx.stroke();
             fftCtx.fillText(freq + "Hz", xPos - 15, fftCanvas.height - 5);
         });
 
-        const magMarks = [30, 20, 10, 0];
+        const magMarks = Array(0, 10, 20, 30);
         magMarks.forEach(mag => {
             let yPos = (fftCanvas.height - 20) - ((mag / 30) * (fftCanvas.height - 25));
             fftCtx.fillText(mag, 15, yPos + 4);

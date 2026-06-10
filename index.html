@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Public Live Audio & Chord Visualizer</title>
+    <title>Public Audio & Chord Visualizer</title>
     <style>
         body {
             background-color: #ffffff;
@@ -45,7 +45,6 @@
 <div id="container">
     <h1>PUBLIC AUDIO INTERFACE</h1>
     
-    <!-- Browsers force a user click before allowing microphone/audio access -->
     <button id="start-btn">START AUDIO CAPTURE</button>
     
     <div class="data-label">CURRENT CHORD/NOTE STATE:</div>
@@ -70,11 +69,14 @@
     const OFFSET_RIGHT = 15;
     const PLOT_WIDTH = waveCanvas.width - OFFSET_LEFT - OFFSET_RIGHT;
 
-    // Music Theory Definitions in JS
     const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     const CHORD_TEMPLATES = {
-        "Major":, "Minor":, "Diminished":, 
-        "Augmented":, "Major 7th":, "Minor 7th":, 
+        "Major": [0, 4, 7], 
+        "Minor": [0, 3, 7], 
+        "Diminished": [0, 3, 6], 
+        "Augmented": [0, 4, 8], 
+        "Major 7th": [0, 4, 7, 11], 
+        "Minor 7th": [0, 3, 7, 10], 
         "Dominant 7th": [0, 4, 7, 10]
     };
 
@@ -83,45 +85,50 @@
     const SMOOTHING_FACTOR = 0.7;
 
     startBtn.addEventListener('click', async () => {
+        // Security check: Guard against insecure browser context rules
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            chordDisplay.innerText = "[ERROR: INSECURE CONTEXT. Use localhost or HTTPS]";
+            alert("Web Audio capture requires an HTTPS production server or Localhost context to run.");
+            return;
+        }
+
         try {
-            // Request system microphone access (or screen-audio share loopback if browser supports it)
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             
             startBtn.style.display = 'none';
             chordDisplay.innerText = "LISTENING...";
 
-            // Setup Browser Web Audio API Engine
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioCtx.createMediaStreamSource(stream);
             
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 2048; // Standard browser FFT resolution size
+            analyser.fftSize = 2048; 
             bufferLength = analyser.frequencyBinCount;
             dataArray = new Float32Array(bufferLength);
             
             source.connect(analyser);
             drawLoop();
         } catch (err) {
-            chordDisplay.innerText = "[ERROR: ACCESS DENIED]";
+            chordDisplay.innerText = "[ERROR: MIC ACCESS DENIED]";
             console.error(err);
         }
     });
 
+    // FIX: Restored valid ternary layout expressions
     function hzToNoteIndex(frequency, sampleRate) {
-        if (frequency <= 0) return null;
+        if (frequency <= 0 || isNaN(frequency)) return null;
         const midiNote = 12 * Math.log2(frequency / 440.0) + 69;
-        return Math.PI ? Math.round(midiNote) % 12 : null; 
+        return !isNaN(midiNote) ? Math.round(midiNote) % 12 : null; 
     }
 
     function drawLoop() {
         requestAnimationFrame(drawLoop);
 
-        // Pull real-time Time Domain (Wave) and Frequency Domain (FFT) data directly from browser
         const waveData = new Float32Array(analyser.fftSize);
         analyser.getFloatTimeDomainData(waveData);
         analyser.getFloatFrequencyData(dataArray);
 
-        // 1. Draw Waveform Canvas
+        // 1. Draw Waveform Axis Grid Lines
         waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
         waveCtx.strokeStyle = "#e0e0e0";
         waveCtx.fillStyle = "#000000";
@@ -133,6 +140,7 @@
             waveCtx.fillText(val.toFixed(1), 5, yPos + 4);
         });
 
+        // Plot Waveform Timeline Trace
         waveCtx.beginPath();
         waveCtx.lineWidth = 1.5;
         waveCtx.strokeStyle = '#0000ff';
@@ -146,15 +154,22 @@
         }
         waveCtx.stroke();
 
-        // 2. Process Music Theory Math and Draw FFT Grid
+        // 2. Draw FFT Calibration Marks
         fftCtx.clearRect(0, 0, fftCanvas.width, fftCanvas.height);
         fftCtx.strokeStyle = "#e0e0e0";
         fftCtx.fillStyle = "#000000";
         
-        [0, 250, 500, 750, 1000, 1250, 1500].forEach(freq => {
+        const freqMarks = [0, 250, 500, 750, 1000, 1250, 1500];
+        freqMarks.forEach(freq => {
             let xPos = OFFSET_LEFT + ((freq / 1500) * PLOT_WIDTH);
             fftCtx.beginPath(); fftCtx.moveTo(xPos, 5); fftCtx.lineTo(xPos, fftCanvas.height - 20); fftCtx.stroke();
             fftCtx.fillText(freq + "Hz", xPos - 15, fftCanvas.height - 5);
+        });
+
+        const magMarks = [30, 20, 10, 0];
+        magMarks.forEach(mag => {
+            let yPos = (fftCanvas.height - 20) - ((mag / 30) * (fftCanvas.height - 25));
+            fftCtx.fillText(mag, 15, yPos + 4);
         });
 
         const sampleRate = audioCtx.sampleRate;
@@ -162,16 +177,13 @@
         let rawChroma = new Array(12).fill(0);
         let maxEnergy = 0;
 
-        // Draw bars and compute chord profiles concurrently
         let barWidth = (PLOT_WIDTH / 80);
         fftCtx.fillStyle = '#ff0000';
 
-        // Loop through browser FFT bins matching 0-1500Hz boundary
         for (let i = 0; i < bufferLength; i++) {
             const freq = i * hzPerBin;
             if (freq > 1500) break;
 
-            // Browser gives data in Decibels (-140 to 0). Normalize it to a positive value
             let db = dataArray[i];
             let magnitude = Math.max(0, db + 100); 
 
@@ -179,22 +191,20 @@
             let barHeight = (magnitude / 100) * (fftCanvas.height - 25);
             fftCtx.fillRect(xPos, (fftCanvas.height - 20) - barHeight, Math.max(1, barWidth - 1), barHeight);
 
-            // Keep track of pitch tracking data if the sound is strong enough
             if (magnitude > 30 && freq >= 60 && freq <= 1200) {
                 let noteIdx = hzToNoteIndex(freq, sampleRate);
-                if (noteIdx !== null && !isNaN(noteIdx)) {
+                if (noteIdx !== null) {
                     rawChroma[noteIdx] += magnitude;
                 }
             }
         }
 
-        // Apply Temporal Integrator Filter Smoothing Factor
+        // Apply Smoothing Integration filter
         for (let i = 0; i < 12; i++) {
             smoothedChroma[i] = (SMOOTHING_FACTOR * smoothedChroma[i]) + ((1 - SMOOTHING_FACTOR) * rawChroma[i]);
             if (smoothedChroma[i] > maxEnergy) maxEnergy = smoothedChroma[i];
         }
 
-        // Match templates to find chords
         let chordName = "";
         let activeNotes = [];
 
@@ -210,7 +220,7 @@
             let highestScore = 0;
             for (let root = 0; root < 12; root++) {
                 for (const [type, intervals] of Object.entries(CHORD_TEMPLATES)) {
-                    let targetIndices = intervals.map(i => (root + i) % 12);
+                    let targetIndices = intervals.map(v => (root + v) % 12);
                     let score = targetIndices.filter(idx => activeIndices.includes(idx)).length;
                     if (score >= 3 && score > highestScore) {
                         highestScore = score;

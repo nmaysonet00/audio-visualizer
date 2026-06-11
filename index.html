@@ -74,7 +74,7 @@
 
     const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     
-    // Explicit array constructors to bypass markdown renderer bugs completely
+    
     const freqMarks = Array(0, 250, 500, 750, 1000, 1250, 1500);
     const magMarks = Array(0, 10, 20, 30);
 
@@ -99,7 +99,7 @@
             
             if (stream.getAudioTracks().length === 0) {
                 noteDisplay.innerText = "[ERROR: AUDIO TRACK NOT FOUND]";
-                alert("You must check the 'Share audio' box in the sharing prompt!");
+                alert("SHARE AUDIO not checked");
                 stream.getTracks().forEach(track => track.stop());
                 return;
             }
@@ -111,7 +111,7 @@
             const source = audioCtx.createMediaStreamSource(stream);
             
             analyser = audioCtx.createAnalyser();
-            // Using maximum browser FFT resolution size (4096) for high-accuracy frequency bins
+            
             analyser.fftSize = 4096; 
             bufferLength = analyser.frequencyBinCount;
             dataArray = new Float32Array(bufferLength);
@@ -140,7 +140,7 @@
         analyser.getFloatTimeDomainData(waveData);
         analyser.getFloatFrequencyData(dataArray);
 
-        // 1. Draw Waveform Axis Grid Lines
+        
         waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
         waveCtx.strokeStyle = "#e0e0e0";
         waveCtx.fillStyle = "#000000";
@@ -153,7 +153,7 @@
             waveCtx.fillText(val.toFixed(1), 5, yPos + 4);
         });
 
-        // Plot Waveform Timeline Trace
+        
         waveCtx.beginPath();
         waveCtx.lineWidth = 1.5;
         waveCtx.strokeStyle = '#0000ff';
@@ -167,7 +167,7 @@
         }
         waveCtx.stroke();
 
-        // 2. Draw FFT Calibration Marks
+        
         fftCtx.clearRect(0, 0, fftCanvas.width, fftCanvas.height);
         fftCtx.strokeStyle = "#e0e0e0";
         fftCtx.fillStyle = "#000000";
@@ -190,27 +190,25 @@
 
         let detectedNotes = Array();
 
-        // 3. FFT Peak Detection and Quadratic Interpolation Engine
+        
         for (let i = 1; i < bufferLength - 1; i++) {
             const freq = i * hzPerBin;
             if (freq > 1500) break;
 
-            // Convert browser Decibels (-140 to 0) into positive magnitude metric
+            
             let db = dataArray[i];
             let magnitude = Math.max(0, db + 100); 
 
-            // Render spectrum bar element
+            
             let xPos = OFFSET_LEFT + ((freq / 1500) * PLOT_WIDTH);
             let barHeight = (magnitude / 100) * (fftCanvas.height - 25);
             fftCtx.fillRect(xPos, (fftCanvas.height - 20) - barHeight, Math.max(1, barWidth - 1), barHeight);
 
-            // Is this point a strict local peak compared to its immediate neighbors?
+            
             let prevMag = Math.max(0, dataArray[i - 1] + 100);
             let nextMag = Math.max(0, dataArray[i + 1] + 100);
 
             if (magnitude > 35 && magnitude > prevMag && magnitude > nextMag && freq >= 60 && freq <= 1200) {
-                // --- ACCURACY UPGRADE: Quadratic Interpolation Math ---
-                // Interpolates between discrete FFT bins to identify exact resonance peaks
                 let alpha = prevMag;
                 let beta = magnitude;
                 let gamma = nextMag;
@@ -226,7 +224,6 @@
             }
         }
 
-        // 4. Update note interface layout stream
         if (detectedNotes.length > 0) {
             noteDisplay.innerText = "Notes: " + detectedNotes.join(", ");
         } else {

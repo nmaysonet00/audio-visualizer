@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Public Audio & Chord Visualizer</title>
+    <title>High-Precision Note & FFT Interface</title>
     <style>
         body {
             background-color: #ffffff;
@@ -29,16 +29,16 @@
         }
         button:hover { background: #f0f0f0; }
         .data-label { font-size: 1rem; font-weight: bold; margin: 15px 0 5px 0; }
-        #chord-display {
+        #note-display {
             font-size: 1.5rem;
             background: #f0f0f0;
             border: 1px solid #000000;
             padding: 10px;
             margin-bottom: 20px;
             font-weight: bold;
-	    white-space: nowrap;
-	    overflow: x;
-	    box-sizing: border-box;
+            white-space: nowrap;
+            overflow: hidden;
+            box-sizing: border-box;
         }
         canvas { background: #ffffff; border: 1px solid #000000; display: block; margin-bottom: 5px; }
     </style>
@@ -50,8 +50,8 @@
     
     <button id="start-btn">START AUDIO CAPTURE</button>
     
-    <div class="data-label">CURRENT CHORD/NOTE STATE:</div>
-    <div id="chord-display">AWAITING USER START...</div>
+    <div class="data-label">CURRENT DETECTED NOTES:</div>
+    <div id="note-display">AWAITING USER START...</div>
     
     <div class="data-label">WAVEFORM AMPLITUDE:</div>
     <canvas id="waveCanvas" width="640" height="130"></canvas>
@@ -62,7 +62,7 @@
 
 <script>
     const startBtn = document.getElementById('start-btn');
-    const chordDisplay = document.getElementById('chord-display');
+    const noteDisplay = document.getElementById('note-display');
     const waveCanvas = document.getElementById('waveCanvas');
     const waveCtx = waveCanvas.getContext('2d');
     const fftCanvas = document.getElementById('fftCanvas');
@@ -72,39 +72,24 @@
     const OFFSET_RIGHT = 15;
     const PLOT_WIDTH = waveCanvas.width - OFFSET_LEFT - OFFSET_RIGHT;
 
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-
-const CHORD_TEMPLATES = {
-    "Major": Array(0, 4, 7), 
-    "Minor": Array(0, 3, 7), 
-    "Diminished": Array(0, 3, 6), 
-    "Augmented": Array(0, 4, 8), 
-    "Major 7th": Array(0, 4, 7, 11), 
-    "Minor 7th": Array(0, 3, 7, 10), 
-    "Dominant 7th": Array(0, 4, 7, 10)
-};
-
-
-
-
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    
+    // Explicit array constructors to bypass markdown renderer bugs completely
+    const freqMarks = Array(0, 250, 500, 750, 1000, 1250, 1500);
+    const magMarks = Array(0, 10, 20, 30);
 
     let audioCtx, analyser, dataArray, bufferLength;
-    let smoothedChroma = new Array(12).fill(0);
-    const SMOOTHING_FACTOR = 0.7;
 
-       startBtn.addEventListener('click', async () => {
-        // Security check: Guard against insecure browser context rules
+    startBtn.addEventListener('click', async () => {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-            chordDisplay.innerText = "[ERROR: INSECURE CONTEXT. Use localhost or HTTPS]";
-            alert("Web Audio system capture requires an HTTPS production server or Localhost context to run.");
+            noteDisplay.innerText = "[ERROR: INSECURE CONTEXT. Use localhost or HTTPS]";
+            alert("Web Audio capture requires an HTTPS production server or Localhost context to run.");
             return;
         }
 
         try {
-            // FIX: Switch from getUserMedia (microphone) to getDisplayMedia (screen/system sound)
             const stream = await navigator.mediaDevices.getDisplayMedia({ 
-                video: true, // Browsers require video to be true for display capture selection
+                video: true, 
                 audio: {
                     echoCancellation: false,
                     noiseSuppression: false,
@@ -112,40 +97,40 @@ const CHORD_TEMPLATES = {
                 } 
             });
             
-            // Verify if the user actually checked the "Share system audio" checkbox
-            const audioTracks = stream.getAudioTracks();
-            if (audioTracks.length === 0) {
-                chordDisplay.innerText = "[ERROR: SYSTEM AUDIO CHECKBOX NOT UNCHECKED]";
-                alert("You must check the 'Share audio' box in the sharing prompt to capture speaker sound!");
-                // Stop any accidental silent screen share tracks
+            if (stream.getAudioTracks().length === 0) {
+                noteDisplay.innerText = "[ERROR: AUDIO TRACK NOT FOUND]";
+                alert("You must check the 'Share audio' box in the sharing prompt!");
                 stream.getTracks().forEach(track => track.stop());
                 return;
             }
 
             startBtn.style.display = 'none';
-            chordDisplay.innerText = "SYSTEM SOUND ACTIVE...";
+            noteDisplay.innerText = "LISTENING...";
 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioCtx.createMediaStreamSource(stream);
             
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 2048; 
+            // Using maximum browser FFT resolution size (4096) for high-accuracy frequency bins
+            analyser.fftSize = 4096; 
             bufferLength = analyser.frequencyBinCount;
             dataArray = new Float32Array(bufferLength);
             
             source.connect(analyser);
             drawLoop();
         } catch (err) {
-            chordDisplay.innerText = "[ERROR: SYSTEM AUDIO ACCESS DENIED]";
+            noteDisplay.innerText = "[ERROR: MIC ACCESS DENIED]";
             console.error(err);
         }
     });
 
-    // FIX: Restored valid ternary layout expressions
-    function hzToNoteIndex(frequency, sampleRate) {
+    function hzToNoteString(frequency) {
         if (frequency <= 0 || isNaN(frequency)) return null;
         const midiNote = 12 * Math.log2(frequency / 440.0) + 69;
-        return !isNaN(midiNote) ? Math.round(midiNote) % 12 : null; 
+        const roundedMidi = Math.round(midiNote);
+        const noteName = NOTE_NAMES[roundedMidi % 12];
+        const octave = Math.floor(roundedMidi / 12) - 1;
+        return `${noteName}${octave}`;
     }
 
     function drawLoop() {
@@ -161,7 +146,8 @@ const CHORD_TEMPLATES = {
         waveCtx.fillStyle = "#000000";
         waveCtx.font = "10px Courier New";
         
-        [0.5, 0.0, -0.5].forEach(val => {
+        const yMarks = Array(0.5, 0.0, -0.5);
+        yMarks.forEach(val => {
             let yPos = ((-val + 0.5) * (waveCanvas.height - 20)) + 10;
             waveCtx.beginPath(); waveCtx.moveTo(OFFSET_LEFT, yPos); waveCtx.lineTo(waveCanvas.width - OFFSET_RIGHT, yPos); waveCtx.stroke();
             waveCtx.fillText(val.toFixed(1), 5, yPos + 4);
@@ -186,14 +172,12 @@ const CHORD_TEMPLATES = {
         fftCtx.strokeStyle = "#e0e0e0";
         fftCtx.fillStyle = "#000000";
         
-        const freqMarks = Array(0, 250, 500, 750, 1000, 1250, 1500);
         freqMarks.forEach(freq => {
             let xPos = OFFSET_LEFT + ((freq / 1500) * PLOT_WIDTH);
             fftCtx.beginPath(); fftCtx.moveTo(xPos, 5); fftCtx.lineTo(xPos, fftCanvas.height - 20); fftCtx.stroke();
             fftCtx.fillText(freq + "Hz", xPos - 15, fftCanvas.height - 5);
         });
 
-        const magMarks = Array(0, 10, 20, 30);
         magMarks.forEach(mag => {
             let yPos = (fftCanvas.height - 20) - ((mag / 30) * (fftCanvas.height - 25));
             fftCtx.fillText(mag, 15, yPos + 4);
@@ -201,68 +185,52 @@ const CHORD_TEMPLATES = {
 
         const sampleRate = audioCtx.sampleRate;
         const hzPerBin = sampleRate / analyser.fftSize;
-        let rawChroma = new Array(12).fill(0);
-        let maxEnergy = 0;
-
         let barWidth = (PLOT_WIDTH / 80);
         fftCtx.fillStyle = '#ff0000';
 
-        for (let i = 0; i < bufferLength; i++) {
+        let detectedNotes = Array();
+
+        // 3. FFT Peak Detection and Quadratic Interpolation Engine
+        for (let i = 1; i < bufferLength - 1; i++) {
             const freq = i * hzPerBin;
             if (freq > 1500) break;
 
+            // Convert browser Decibels (-140 to 0) into positive magnitude metric
             let db = dataArray[i];
             let magnitude = Math.max(0, db + 100); 
 
+            // Render spectrum bar element
             let xPos = OFFSET_LEFT + ((freq / 1500) * PLOT_WIDTH);
             let barHeight = (magnitude / 100) * (fftCanvas.height - 25);
             fftCtx.fillRect(xPos, (fftCanvas.height - 20) - barHeight, Math.max(1, barWidth - 1), barHeight);
 
-            if (magnitude > 30 && freq >= 60 && freq <= 1200) {
-                let noteIdx = hzToNoteIndex(freq, sampleRate);
-                if (noteIdx !== null) {
-                    rawChroma[noteIdx] += magnitude;
+            // Is this point a strict local peak compared to its immediate neighbors?
+            let prevMag = Math.max(0, dataArray[i - 1] + 100);
+            let nextMag = Math.max(0, dataArray[i + 1] + 100);
+
+            if (magnitude > 35 && magnitude > prevMag && magnitude > nextMag && freq >= 60 && freq <= 1200) {
+                // --- ACCURACY UPGRADE: Quadratic Interpolation Math ---
+                // Interpolates between discrete FFT bins to identify exact resonance peaks
+                let alpha = prevMag;
+                let beta = magnitude;
+                let gamma = nextMag;
+                
+                let p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma);
+                let preciseBin = i + p;
+                let exactFrequency = preciseBin * hzPerBin;
+
+                let noteStr = hzToNoteString(exactFrequency);
+                if (noteStr && !detectedNotes.includes(noteStr)) {
+                    detectedNotes.push(noteStr);
                 }
             }
         }
 
-        // Apply Smoothing Integration filter
-        for (let i = 0; i < 12; i++) {
-            smoothedChroma[i] = (SMOOTHING_FACTOR * smoothedChroma[i]) + ((1 - SMOOTHING_FACTOR) * rawChroma[i]);
-            if (smoothedChroma[i] > maxEnergy) maxEnergy = smoothedChroma[i];
-        }
-
-        let chordName = "";
-        let activeNotes = [];
-
-        if (maxEnergy > 10) {
-            let activeIndices = [];
-            for (let i = 0; i < 12; i++) {
-                if (smoothedChroma[i] > maxEnergy * 0.45) {
-                    activeIndices.push(i);
-                    activeNotes.push(NOTE_NAMES[i]);
-                }
-            }
-
-            let highestScore = 0;
-            for (let root = 0; root < 12; root++) {
-                for (const [type, intervals] of Object.entries(CHORD_TEMPLATES)) {
-                    let targetIndices = intervals.map(v => (root + v) % 12);
-                    let score = targetIndices.filter(idx => activeIndices.includes(idx)).length;
-                    if (score >= 3 && score > highestScore) {
-                        highestScore = score;
-                        chordName = `${NOTE_NAMES[root]} ${type}`;
-                    }
-                }
-            }
-        }
-
-        if (chordName) {
-            chordDisplay.innerText = chordName + ` (Notes: ${activeNotes.join(', ')})`;
-        } else if (activeNotes.length > 0) {
-            chordDisplay.innerText = `Notes: ${activeNotes.join(', ')}`;
+        // 4. Update note interface layout stream
+        if (detectedNotes.length > 0) {
+            noteDisplay.innerText = "Notes: " + detectedNotes.join(", ");
         } else {
-            chordDisplay.innerText = "Silence";
+            noteDisplay.innerText = "Silence";
         }
     }
 </script>

@@ -82,8 +82,7 @@
 
     startBtn.addEventListener('click', async () => {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-            noteDisplay.innerText = "[ERROR: INSECURE CONTEXT. Use localhost or HTTPS]";
-            alert("Web Audio capture requires an HTTPS production server or Localhost context to run.");
+            noteDisplay.innerText = "Error. Bad Device";
             return;
         }
 
@@ -98,7 +97,7 @@
             });
             
             if (stream.getAudioTracks().length === 0) {
-                noteDisplay.innerText = "[ERROR: AUDIO TRACK NOT FOUND]";
+                noteDisplay.innerText = "AUDIO TRACK NOT FOUND";
                 alert("SHARE AUDIO not checked");
                 stream.getTracks().forEach(track => track.stop());
                 return;
@@ -119,7 +118,7 @@
             source.connect(analyser);
             drawLoop();
         } catch (err) {
-            noteDisplay.innerText = "[ERROR: MIC ACCESS DENIED]";
+            noteDisplay.innerText = "MIC ACCESS DENIED";
             console.error(err);
         }
     });
